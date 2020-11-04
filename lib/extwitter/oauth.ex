@@ -10,35 +10,113 @@ defmodule ExTwitter.OAuth do
     oauth_get(url, params, consumer_key, consumer_secret, access_token, access_token_secret, [])
   end
 
-  def request(:post, url, params, consumer_key, consumer_secret, access_token, access_token_secret) do
+  @doc """
+  Send request with post method.
+  """
+  def request(
+        :post,
+        url,
+        params,
+        consumer_key,
+        consumer_secret,
+        access_token,
+        access_token_secret
+      ) do
     oauth_post(url, params, consumer_key, consumer_secret, access_token, access_token_secret, [])
   end
 
   @doc """
   Send async request with get or post method.
   """
-  def request_async(:get, url, params, consumer_key, consumer_secret, access_token, access_token_secret) do
-    oauth_get(url, params, consumer_key, consumer_secret, access_token, access_token_secret, stream_option())
-  end
-
-  def request_async(:post, url, params, consumer_key, consumer_secret, access_token, access_token_secret) do
-    oauth_post(url, params, consumer_key, consumer_secret, access_token, access_token_secret, stream_option())
+  def request_async(
+        :get,
+        url,
+        params,
+        consumer_key,
+        consumer_secret,
+        access_token,
+        access_token_secret
+      ) do
+    oauth_get(
+      url,
+      params,
+      consumer_key,
+      consumer_secret,
+      access_token,
+      access_token_secret,
+      stream_option()
+    )
   end
 
   @doc """
-  Send oauth request with get or post method.
+  Send async request with post method.
   """
-  def oauth_get(url, params, consumer_key, consumer_secret, access_token, access_token_secret, options) do
-    signed_params = get_signed_params(
-      "get", url, params, consumer_key, consumer_secret, access_token, access_token_secret)
-    encoded_params = URI.encode_query(signed_params)
-    request = {to_charlist(url <> "?" <> encoded_params), []}
+  def request_async(
+        :post,
+        url,
+        params,
+        consumer_key,
+        consumer_secret,
+        access_token,
+        access_token_secret
+      ) do
+    oauth_post(
+      url,
+      params,
+      consumer_key,
+      consumer_secret,
+      access_token,
+      access_token_secret,
+      stream_option()
+    )
+  end
+
+  def oauth_get(
+        url,
+        params,
+        consumer_key,
+        consumer_secret,
+        access_token,
+        access_token_secret,
+        options
+      ) do
+    signed_params =
+      get_signed_params(
+        "get",
+        url,
+        params,
+        consumer_key,
+        consumer_secret,
+        access_token,
+        access_token_secret
+      )
+
+    {header, req_params} = OAuther.header(signed_params)
+    header = header |> Tuple.to_list() |> Enum.map(&to_charlist/1) |> List.to_tuple()
+    request = {to_charlist(url <> "?" <> URI.encode_query(req_params)), [header]}
     send_httpc_request(:get, request, options)
   end
 
-  def oauth_post(url, params, consumer_key, consumer_secret, access_token, access_token_secret, options) do
-    signed_params = get_signed_params(
-      "post", url, params, consumer_key, consumer_secret, access_token, access_token_secret)
+  def oauth_post(
+        url,
+        params,
+        consumer_key,
+        consumer_secret,
+        access_token,
+        access_token_secret,
+        options
+      ) do
+    signed_params =
+      get_signed_params(
+        "post",
+        url,
+        params,
+        consumer_key,
+        consumer_secret,
+        access_token,
+        access_token_secret
+      )
+
     encoded_params = URI.encode_query(signed_params)
     request = {to_charlist(url), [], 'application/x-www-form-urlencoded', encoded_params}
     send_httpc_request(:post, request, options)
@@ -48,13 +126,23 @@ defmodule ExTwitter.OAuth do
     :httpc.request(method, request, [{:autoredirect, false}] ++ proxy_option(), options)
   end
 
-  defp get_signed_params(method, url, params, consumer_key, consumer_secret, access_token, access_token_secret) do
-    credentials = OAuther.credentials(
+  defp get_signed_params(
+         method,
+         url,
+         params,
+         consumer_key,
+         consumer_secret,
+         access_token,
+         access_token_secret
+       ) do
+    credentials =
+      OAuther.credentials(
         consumer_key: consumer_key,
         consumer_secret: consumer_secret,
         token: access_token,
         token_secret: access_token_secret
-    )
+      )
+
     OAuther.sign(method, url, params, credentials)
   end
 
@@ -63,6 +151,6 @@ defmodule ExTwitter.OAuth do
   end
 
   defp proxy_option do
-    ExTwitter.Proxy.options
+    ExTwitter.Proxy.options()
   end
 end
