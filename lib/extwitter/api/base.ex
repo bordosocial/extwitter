@@ -5,7 +5,8 @@ defmodule ExTwitter.API.Base do
 
   # https://dev.twitter.com/overview/api/response-codes
   @error_code_rate_limit_exceeded 88
-  @default_chunk_size 65536 # 64kb
+  # 64kb
+  @default_chunk_size 65536
 
   @doc """
   Send request to the api.twitter.com server.
@@ -29,7 +30,7 @@ defmodule ExTwitter.API.Base do
   end
 
   def init_media_upload(path, content_type) do
-    %{size: size} = File.stat! path
+    %{size: size} = File.stat!(path)
     request_params = [command: "INIT", total_bytes: size, media_type: content_type]
     response = do_request(:post, media_upload_url(), request_params)
     response.media_id
@@ -38,11 +39,21 @@ defmodule ExTwitter.API.Base do
   def upload_file_chunks(path, media_id, chunk_size) do
     stream = File.stream!(path, [], chunk_size)
     initial_segment_index = 0
-    Enum.reduce(stream, initial_segment_index, fn(chunk, seg_index) ->
-      request_params = [command: "APPEND", media_id: media_id, media_data: Base.encode64(chunk), segment_index: seg_index]
+
+    Enum.reduce(stream, initial_segment_index, fn chunk, seg_index ->
+      request_params = [
+        command: "APPEND",
+        media_id: media_id,
+        media_data: Base.encode64(chunk),
+        segment_index: seg_index
+      ]
+
       case do_request(:post, media_upload_url(), request_params, parse_result: false) do
-        {:ok, {{_proto, status_code, _status_description}, _headers, _body}} when status_code in 200..299 -> :ok
+        {:ok, {{_proto, status_code, _status_description}, _headers, _body}}
+        when status_code in 200..299 ->
+          :ok
       end
+
       seg_index + 1
     end)
   end
@@ -60,12 +71,23 @@ defmodule ExTwitter.API.Base do
   end
 
   defp do_request(method, url, params, options \\ [parse_result: true]) do
-    oauth = ExTwitter.Config.get_tuples |> verify_params
-    response = ExTwitter.OAuth.request(method, url, params,
-      oauth[:consumer_key], oauth[:consumer_secret], oauth[:access_token], oauth[:access_token_secret])
+    oauth = ExTwitter.Config.get_tuples() |> verify_params
+
+    response =
+      ExTwitter.OAuth.request(
+        method,
+        url,
+        params,
+        oauth[:consumer_key],
+        oauth[:consumer_secret],
+        oauth[:access_token],
+        oauth[:access_token_secret]
+      )
+
     case response do
       {:error, reason} ->
         raise(ExTwitter.ConnectionError, reason: reason)
+
       r ->
         if Keyword.get(options, :parse_result, true) do
           parse_result(r)
@@ -77,7 +99,8 @@ defmodule ExTwitter.API.Base do
 
   def verify_params([]) do
     raise ExTwitter.Error,
-      message: "OAuth parameters are not set. Use ExTwitter.configure function to set parameters in advance."
+      message:
+        "OAuth parameters are not set. Use ExTwitter.configure function to set parameters in advance."
   end
 
   def verify_params(params), do: params
@@ -86,6 +109,7 @@ defmodule ExTwitter.API.Base do
     cond do
       is_number(id) ->
         [user_id: id]
+
       true ->
         [screen_name: id]
     end
@@ -96,7 +120,7 @@ defmodule ExTwitter.API.Base do
   end
 
   def request_url(path) do
-    "https://api.twitter.com/#{path}"
+    Application.get_env(:extwitter, :base_url) <> "/#{path}"
   end
 
   defp upload_url(path) do
@@ -115,23 +139,31 @@ defmodule ExTwitter.API.Base do
       case Map.get(body, :errors, nil) || Map.get(body, :error, nil) do
         nil ->
           body
+
         errors when is_list(errors) ->
           parse_error(List.first(errors), header)
+
         error ->
-          raise(ExTwitter.Error, message: inspect error)
+          raise(ExTwitter.Error, message: inspect(error))
       end
     end
   end
 
   defp parse_error(error, header) do
     %{:code => code, :message => message} = error
+
     case code do
       @error_code_rate_limit_exceeded ->
         reset_at = fetch_rate_limit_reset(header)
         reset_in = Enum.max([reset_at - now(), 0])
+
         raise ExTwitter.RateLimitExceededError,
-          code: code, message: message, reset_at: reset_at, reset_in: reset_in
-      _  ->
+          code: code,
+          message: message,
+          reset_at: reset_at,
+          reset_in: reset_in
+
+      _ ->
         raise ExTwitter.Error, code: code, message: message
     end
   end
@@ -143,7 +175,7 @@ defmodule ExTwitter.API.Base do
   end
 
   defp now do
-    {megsec, sec, _microsec} = :os.timestamp
+    {megsec, sec, _microsec} = :os.timestamp()
     megsec * 1_000_000 + sec
   end
 end
